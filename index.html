@@ -1118,10 +1118,10 @@ function defaultWorkouts(){
         mkEx("Lat Pulldown",3,"10–12","Frontal plane — shoulder ADDUCTION. Wide-ish grip, drive the elbows down and out, full stretch at the top.","",90),
         mkEx("Machine Row",3,"8–12","Horizontal. Chest on the pad, pull to the navel, elbows straight back, squeeze the mid-back.","",90),
         mkEx("Close-Grip Pulldown",3,"10–12","Sagittal plane — shoulder EXTENSION. Elbows tight to the body, pull toward the hips.","",90),
-        mkEx("Shrug",2,"8–10","Upper traps. Straight up, no rolling. Pause and squeeze at the top.","",75),
         mkEx("Rear Delt Fly",2,"8–10","Squeeze, do not swing.","A",60),
         mkEx("Hammer Curl",2,"8–10","Brachialis and brachioradialis — arm width.","A",60),
-        mkEx("Preacher Curl",2,"8–10","Arm pinned to the pad, no cheating. Full stretch at the bottom.","",60),
+        mkEx("Shrug",2,"8–10","Upper traps. Straight up, no rolling. Pause and squeeze at the top.","B",75),
+        mkEx("Preacher Curl",2,"8–10","Paired with the shrugs — traps and biceps do not compete. Arm pinned to the pad, no cheating, full stretch at the bottom.","B",60),
         mkEx("Decline Sit-up",3,"10–15","Closes the day. A COMPLETE sit-up — elbows as close to the hips as you can get, all the way up.","",60)
       ] },
 
@@ -3394,7 +3394,12 @@ function renderConsistency(){
       const key=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
       const fut=key>tk;
       const on=trained.has(key);                 // trained wins if a day somehow has both
-      const rs=!on&&rested.has(key);
+      // The program is five lifting days, Mon–Fri. Saturday and Sunday are scheduled
+      // rest, so an empty weekend is deliberate rather than a missed session and should
+      // never read as a gap in the grid.
+      const wd=dt.getDay();                      // 0=Sun, 6=Sat
+      const weekendRest=(wd===0||wd===6);
+      const rs=!on&&(rested.has(key)||weekendRest);
       if(!fut){ if(on) trainedDays++; else if(rs) restDays++; }
       cells+=`<div class="cons-cell${on?' on':''}${rs?' rest':''}${fut?' fut':''}"></div>`;
     }
@@ -3586,7 +3591,7 @@ function historyCardHTML(h){
       </div>
     </div>
     <div class="h-body">${body}
-      <button class="btn-ghost danger" data-del-h="${h.id}" style="margin-top:12px;padding:9px 12px;">Delete session</button>
+      <button class="btn-ghost danger" data-del-h="${h.id}" style="margin-top:12px;padding:9px 12px;">Remove this session</button>
     </div>
   </div>`;
 }
@@ -3677,9 +3682,11 @@ document.getElementById("historyList").addEventListener("click",(e)=>{
   const del=e.target.closest("[data-del-h]");
   if(del){ e.stopPropagation();
     const gone=state.history.find(h=>h.id===del.dataset.delH);
+    if(!gone) return;
+    if(!confirm(`Remove this session?\n\n${prettyDate(gone.date)} · ${gone.title}\n\nIt comes off your history, the consistency grid and your stats. Any PR it set is recalculated from what is left. This cannot be undone.`)) return;
     state.history=state.history.filter(h=>h.id!==del.dataset.delH);
     recomputePRsAfterDelete(gone);
-    save(); renderHistory(); toast("Deleted"); return; }
+    save(); renderHistory(); renderStats(); renderTrain(); toast("Session removed"); return; }
   const wk=e.target.closest("[data-weektoggle]");
   if(wk){ wk.closest(".week-card").classList.toggle("open"); return; }
   const head=e.target.closest("[data-toggle]");
