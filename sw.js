@@ -4,7 +4,7 @@
 
    Note: the browser only re-installs a service worker when THIS FILE changes.
    Bumping CACHE below is what forces the old cached app to be thrown away. */
-const CACHE = "foundation-v43";
+const CACHE = "foundation-v44";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
