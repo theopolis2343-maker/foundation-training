@@ -45,6 +45,7 @@
     --bar-cardio-soft:rgba(110,147,152,.22);
     --on-accent:#FDFFE0;
     --hi:#3F6368;
+    --rest:#92C582;
     --safe-b:env(safe-area-inset-bottom,0px);
     --safe-t:env(safe-area-inset-top,0px);
   }
@@ -139,7 +140,7 @@
   .range-seg button:active{transform:scale(.97);}
   /* bodyweight input row */
   .bw-input-row{display:flex;gap:8px;margin-bottom:14px;}
-  .bw-input-row input{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 13px;color:var(--bone);font-size:15px;}
+  .bw-input-row input{flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 13px;color:var(--bone);font-size:15px;}
   .bw-input-row input:focus{outline:none;border-color:var(--amber);}
   .bw-input-row .btn-primary{width:auto;padding:11px 22px;}
   .bw-graph-head{display:flex;align-items:baseline;gap:10px;margin-bottom:2px;}
@@ -237,7 +238,7 @@
   .csr.done .csr-field{border-color:var(--amber);color:var(--amber);}
   .csr-check{width:30px;height:30px;border-radius:8px;border:1.5px solid var(--line);background:var(--surface-2);display:grid;place-items:center;color:transparent;transition:.12s;}
   .csr-check.done{background:var(--amber);border-color:var(--amber);color:#FDFFE0;}
-  .ss-addset{margin-top:8px;padding:7px 0;width:100%;font-size:12px;}
+  .ss-col .btn-ghost.ss-addset{margin-top:8px;padding:7px 2px;flex:1 1 0;min-width:0;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .ss-tag{display:inline-block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--amber);background:var(--amber-soft);border-radius:6px;padding:2px 7px;margin-left:8px;vertical-align:middle;}
 
   /* ---------- Session timer (per-day stopwatch) ---------- */
@@ -596,6 +597,8 @@
   .he-actions .btn-ghost{flex:0 0 auto;padding:11px 16px;}
   .plate-fab{position:fixed;right:16px;bottom:calc(78px + var(--safe-b));width:52px;height:52px;border-radius:16px;border:1px solid var(--line);background:var(--surface-2);color:#3D4E39;font-size:11px;font-weight:800;letter-spacing:.04em;display:none;align-items:center;justify-content:center;z-index:55;box-shadow:0 4px 14px rgba(0,0,0,.13);cursor:pointer;}
   .plate-fab.show{display:flex;}
+  .nav-plate{display:none;}
+  .nav-plate.show{display:flex;}
   .plate-out{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px;}
   .plate{
     display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -714,8 +717,8 @@
   .cons-grid{display:flex;gap:3px;}
   .cons-week{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;}
   .cons-cell{height:9px;border-radius:2.5px;background:var(--surface-2);border:1px solid var(--line);}
-  .cons-cell.on{background:var(--amber);border-color:var(--amber);}
-  .cons-cell.rest{background:var(--amber);border-color:var(--amber);}
+  .cons-cell.on{background:var(--sage);border-color:var(--sage);}
+  .cons-cell.rest{background:var(--rest,var(--sage-fill));border-color:var(--rest,var(--sage-fill));}
   .cons-cell.fut{opacity:.22;}
   .rec-row{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
   .rec-name{flex:1;font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -747,7 +750,7 @@
   .step-btn,.rpe-dot,.preset,.t-reset,.cm-tab,.flex-tab,.coach-chip,
   .btn-ghost,.deload-banner .db-btn,.ps-barseg button,.ex-suggest .sug-use,
   .loc-seg button,.stats-toggle button,.range-seg button,.seg button{color:var(--on-tint-dim);}
-  .check{color:#5E6A58;}
+  .check,.csr-check:not(.done){color:#5E6A58;}
   .wu-allbox,.wu-box,.csr-check,.edot{border-color:#A8C79C;}
   .btn-ghost.danger{color:#A63A26;border-color:rgba(166,58,38,.35);}
   .btn-ghost.minus{color:#5E6A58;}
@@ -998,7 +1001,7 @@
   </div>
 </div>
 
-<button class="plate-fab" id="plateFab" aria-label="Plate calculator">PLATE</button>
+
 
 <!-- ============ PLATE SHEET (in-session) ============ -->
 <div class="plate-sheet" id="plateSheet">
@@ -1051,6 +1054,10 @@
   <button class="nav-btn" data-page="journal">
     <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/></svg>
     <span class="lbl">Journal</span>
+  </button>
+  <button class="nav-btn nav-plate" id="plateFab" aria-label="Plate calculator">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>
+    <span class="lbl">Plates</span>
   </button>
 </nav>
 
@@ -1835,6 +1842,11 @@ function suggestFor(ex){
       // at the top but not yet two-sessions-green → hold here and keep owning the form
       return {state:"hold", w:0, bw:true, reps:rng.hi, line:`BW × ${rng.hi}`};
     }
+    // red means repeat — same reps next time, same as the weighted path
+    if(grind){
+      const same=Math.min(...last.reps);
+      return {state:"hold", w:0, bw:true, reps:same, line:`BW × ${same}`};
+    }
     // still climbing reps at bodyweight
     const nextRepBW=Math.min(rng.hi, Math.min(...last.reps)+1);
     return {state:"climb", w:0, bw:true, reps:nextRepBW, line:`BW × ${nextRepBW}`};
@@ -2303,14 +2315,15 @@ function renderExerciseCard(ex,exIdx,draft,dow,inSS){
 // and none of them were tapped green. The dot still decides — this only offers the jump.
 function readyToLoad(ex){
   if(isAssisted(ex.name)) return null;              // assistance moves the other way
-  const rng=parseRange(ex.reps); if(!rng || rng.lo===rng.hi) return null;
+  // Fixed-rep lifts (3×5) count too: "at the top" just means every set hit the 5.
+  const rng=parseRange(ex.reps); if(!rng) return null;
   const hist=progHistory(ex.name,3);
   if(hist.length<2) return null;
-  const streak=hist.filter(h=>h.reps.length && h.reps.every(r=>r>=rng.hi) && h.effort!=="go");
-  // must be the most recent sessions, unbroken
+  // must be the most recent sessions, unbroken. A red dot means "repeat this load", so a
+  // red session breaks the streak — the nudge never argues with the dot.
   let n=0;
   for(const h of hist){
-    if(h.reps.length && h.reps.every(r=>r>=rng.hi) && h.effort!=="go") n++; else break;
+    if(h.reps.length && h.reps.every(r=>r>=rng.hi) && h.effort!=="go" && h.effort!=="hold") n++; else break;
   }
   if(n<2) return null;
   const w=hist[0].w||0; if(w<=0) return null;
@@ -2512,7 +2525,7 @@ function ssColumnHTML(ex,exIdx,draft,dow){
       <div style="display:flex;gap:6px;">
         <button class="btn-ghost ss-addset" data-act="addset" data-ex="${ex.id}">+ Set</button>
         ${arr.length>1?`<button class="btn-ghost ss-addset minus" data-act="delset" data-ex="${ex.id}">− Set</button>`:""}
-        <button class="btn-ghost ss-addset" data-act="togglenote" data-ex="${ex.id}">${ssNote?"Edit note":"+ Note"}</button>
+        <button class="btn-ghost ss-addset" data-act="togglenote" data-ex="${ex.id}">${ssNote?"Note •":"Note"}</button>
       </div>
       <textarea class="ex-note" data-note="${ex.id}" placeholder="Note…" style="font-size:16px;${ssNote?'':'display:none;'}">${escapeHTML(ssNote)}</textarea>
       ${effortDotsHTML(ex.id,draft,true)}
@@ -3630,7 +3643,7 @@ function renderConsistency(){
     html+=`<div class="cons-week">${cells}</div>`;
   }
   grid.innerHTML=html;
-  document.getElementById("consSub").innerHTML=`<span class="leg" style="margin-left:0"><i style="background:var(--sage)"></i>${trainedDays} trained</span><span class="leg"><i style="background:var(--amber)"></i>${restDays} rest</span> · 12 weeks · Mon top, Sun bottom.`;
+  document.getElementById("consSub").innerHTML=`<span class="leg" style="margin-left:0"><i style="background:var(--sage)"></i>${trainedDays} trained</span><span class="leg"><i style="background:var(--rest,var(--sage-fill))"></i>${restDays} rest</span> · 12 weeks · Mon top, Sun bottom.`;
 }
 // ranked best estimated 1RMs, straight from state.prs
 function renderRecords(){
