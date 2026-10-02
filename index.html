@@ -530,8 +530,20 @@
   .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
   .seg button{padding:9px 16px;font-size:13px;font-weight:600;color:var(--muted);}
   .seg button.on{background:var(--amber);color:#FDFFE0;}
-  .plate-sheet{position:fixed;inset:0;background:rgba(0,0,0,.13);display:none;align-items:flex-end;z-index:70;}
-  .plate-sheet.show{display:flex;}
+  .plate-sheet{position:fixed;inset:0;background:rgba(0,0,0,.18);display:flex;align-items:flex-end;z-index:70;
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,visibility 0s linear .3s;}
+  .plate-sheet.show{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .22s ease;}
+  .plate-sheet .ps-panel{transform:translateY(100%);transition:transform .32s cubic-bezier(.22,.9,.3,1);max-height:92vh;overflow-y:auto;}
+  .plate-sheet.show .ps-panel{transform:none;}
+  .ps-keyfield{caret-color:transparent;-webkit-user-select:none;user-select:none;cursor:pointer;}
+  .ps-keyfield.active{border-color:var(--amber);box-shadow:0 0 0 2px rgba(83,111,80,.25);}
+  .ps-pad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:14px;}
+  .ps-pad button{height:46px;border-radius:11px;border:1px solid #A8C79C;background:var(--surface-2);color:var(--on-tint);
+    font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;touch-action:manipulation;transition:transform .08s,background .12s;}
+  .ps-pad button.fn{font-size:14px;color:var(--on-tint-dim);}
+  .ps-pad button.wide{grid-column:span 2;}
+  .ps-pad button:active{transform:scale(.95);background:var(--tap);}
+  .ps-pad.hide{display:none;}
   .ps-panel{width:100%;background:var(--surface);border-top-left-radius:20px;border-top-right-radius:20px;border-top:1px solid var(--line);padding:16px 18px calc(20px + var(--safe-b));}
   .ps-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .ps-head h3{margin:0;font-size:16px;}
@@ -1015,10 +1027,10 @@
       <div class="ps-barseg" id="psBarSeg">
         <button data-bar="45" class="on">Bar<small>45</small></button>
         <button data-bar="20">Smith<small>20</small></button>
-        <button data-bar="118">Hack<small>118</small></button>
+        <button data-bar="118">Leg Press<small>118</small></button>
         <button data-bar="custom">Other<small>set</small></button>
       </div>
-      <input type="number" inputmode="decimal" id="psCustomBar" class="ps-custombar" placeholder="Starting weight of the bar / sled" />
+      <input type="text" readonly inputmode="none" tabindex="-1" id="psCustomBar" class="ps-custombar ps-keyfield" data-field="bar" placeholder="Starting weight of the bar / sled" />
     </div>
     <div class="ps-modeseg" id="psModeSeg">
       <button data-mode="target" class="on">Weight → Plates</button>
@@ -1026,7 +1038,7 @@
     </div>
 
     <div id="psTargetMode">
-      <input type="number" inputmode="decimal" id="psTarget" class="ps-target" placeholder="Target weight" />
+      <input type="text" readonly inputmode="none" tabindex="-1" id="psTarget" class="ps-target ps-keyfield active" data-field="target" placeholder="Target weight" />
       <div class="ps-result" id="psResult">Enter a target weight</div>
       <div class="plate-out" id="psOut"></div>
     </div>
@@ -1037,6 +1049,12 @@
       <div class="ps-total" id="psTotal">—</div>
       <div class="ps-result" id="psBreak">bar only</div>
       <button class="ps-clear" id="psClear">Clear</button>
+    </div>
+    <div class="ps-pad" id="psPad">
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="back" class="fn" aria-label="Delete">⌫</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="clear" class="fn">Clear</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="minus" class="fn">−5</button>
+      <button data-k=".">.</button><button data-k="0" class="wide">0</button><button data-k="plus" class="fn">+5</button>
     </div>
   </div>
 </div>
@@ -1543,7 +1561,7 @@ function v30fix(){
       if(h.deload || !h.exercises) continue;
       for(const e of h.exercises){
         for(const st of (e.sets||[])){
-          const w=parseFloat(st.w)||0, r=parseInt(st.r)||0; if(w<=0||r<=0) continue;
+          const w=parseFloat(st.w)||0, r=parseFloat(st.r)||0; if(w<=0||r<=0) continue;
           const t=bestTop[e.name];
           if(!t || w>t.w || (w===t.w && r>t.r)) bestTop[e.name]={w,r,date:h.date};
           const v=e1rm(w,r); const b=bestE[e.name];
@@ -1555,7 +1573,7 @@ function v30fix(){
       if(!state.prs[n] && bestE[n]) state.prs[n]=Object.assign({},bestE[n]);
       if(state.prs[n]){
         const pt=state.prs[n].top;
-        if(!pt || bestTop[n].w>parseFloat(pt.w) || (bestTop[n].w===parseFloat(pt.w) && bestTop[n].r>parseInt(pt.r))) state.prs[n].top=bestTop[n];
+        if(!pt || bestTop[n].w>parseFloat(pt.w) || (bestTop[n].w===parseFloat(pt.w) && bestTop[n].r>parseFloat(pt.r))) state.prs[n].top=bestTop[n];
       }
     }
     state.topBackfillV33=true;
@@ -1676,7 +1694,7 @@ function getDraft(dow){
 }
 
 // estimated 1RM (Epley) for a set; reps capped so very-high-rep work doesn't distort
-function e1rm(w,r){ w=parseFloat(w)||0; r=parseInt(r)||0; if(w<=0||r<=0) return 0; return r===1?w:w*(1+Math.min(r,20)/30); }
+function e1rm(w,r){ w=parseFloat(w)||0; r=parseFloat(r)||0; if(w<=0||r<=0) return 0; return r===1?w:w*(1+Math.min(r,20)/30); }
 // If a deleted session held any current PRs, re-derive those records from remaining history.
 // Only touches exercises whose PR came from the deleted session — seeded/imported PRs stay intact.
 function recomputePRsAfterDelete(gone){
@@ -1789,7 +1807,7 @@ function progHistory(name,limit){
     if(h.deload) continue;               // deload sessions never steer progression
     const m=h.exercises.find(e=>e.name===name);
     if(m && m.sets && m.sets.length){
-      const reps=m.sets.map(s=>parseInt(s.r)||0);
+      const reps=m.sets.map(s=>parseFloat(s.r)||0);
       const w=parseFloat(m.sets[0].w)||0;
       out.push({w, reps, effort:(h.effort&&h.effort[name])||null, date:h.date});
       if(out.length>=(limit||6)) break;
@@ -1844,11 +1862,11 @@ function suggestFor(ex){
     }
     // red means repeat — same reps next time, same as the weighted path
     if(grind){
-      const same=Math.min(...last.reps);
+      const same=Math.ceil(Math.min(...last.reps));
       return {state:"hold", w:0, bw:true, reps:same, line:`BW × ${same}`};
     }
     // still climbing reps at bodyweight
-    const nextRepBW=Math.min(rng.hi, Math.min(...last.reps)+1);
+    const nextRepBW=Math.min(rng.hi, Math.floor(Math.min(...last.reps))+1);
     return {state:"climb", w:0, bw:true, reps:nextRepBW, line:`BW × ${nextRepBW}`};
   }
 
@@ -1877,7 +1895,10 @@ function suggestFor(ex){
   //   red    "repeat"      -> same weight, same reps, next session
   // Untagged sessions fall back to gold, which is the conservative option.
   const dot = last.effort || "ok";
-  const lagging = Math.min(...last.reps);
+  // A half rep (9.5) counts toward the climb but suggestions always target whole reps:
+  // "repeat" aims to finish the rep you missed, "add a rep" goes to the next whole one.
+  const lagging = Math.ceil(Math.min(...last.reps));
+  const laggingUp = Math.floor(Math.min(...last.reps)) + 1;
 
   // Assisted lifts (dips, pull-ups) log how much HELP the machine gives, so "add weight"
   // means take assistance away. The whole ladder runs backwards for them.
@@ -1888,7 +1909,7 @@ function suggestFor(ex){
               line: nw>0 ? `${fmtW(nw)} assist × ${rng.lo}` : `bodyweight × ${rng.lo}`};
     }
     if(dot==="hold") return {state:"hold", w:w, reps:lagging, line:`${fmtW(w)} assist × ${lagging}`};
-    const nr=Math.min(rng.hi, lagging+1);
+    const nr=Math.min(rng.hi, laggingUp);
     return {state:"climb", w:w, reps:nr, line:`${fmtW(w)} assist × ${nr}`};
   }
 
@@ -1900,7 +1921,7 @@ function suggestFor(ex){
     return {state:"hold", w:w, reps:lagging, line:`${fmtW(w)} × ${lagging}`};
   }
   // gold: climb a rep, or sit at the top of the range until you tap green
-  const nextRep=Math.min(rng.hi, lagging+1);
+  const nextRep=Math.min(rng.hi, laggingUp);
   return {state:"climb", w:w, reps:nextRep, line:`${fmtW(w)} × ${nextRep}`};
 }
 // trim trailing .0 so "100" not "100.0", keep .5 for kg
@@ -2384,7 +2405,7 @@ function liftingStatsHTML(dow,w,doneEntry){
   let totalSets=0, doneSets=0, vol=0;
   for(const ex of w.ex){
     const ds = draft.sets[ex.id];
-    if(ds){ for(const s of ds){ totalSets++; if(s.done){doneSets++; vol += (parseFloat(s.w)||0)*(parseInt(s.r)||0);} } }
+    if(ds){ for(const s of ds){ totalSets++; if(s.done){doneSets++; vol += (parseFloat(s.w)||0)*(parseFloat(s.r)||0);} } }
     else { totalSets += ex.sets; }
   }
   const est=estSessionMin(dow,w);
@@ -2470,7 +2491,7 @@ function setRowHTML(exId,si,s,lastSet){
       </div>
       <div class="stepper">
         <button class="step-btn" data-act="step" data-ex="${exId}" data-si="${si}" data-f="r" data-d="-1">−</button>
-        <input class="field" type="number" inputmode="numeric" data-f="r" data-ex="${exId}" data-si="${si}" value="${s.r}" placeholder="${rPh}" />
+        <input class="field" type="number" inputmode="decimal" step="any" data-f="r" data-ex="${exId}" data-si="${si}" value="${s.r}" placeholder="${rPh}" />
         <button class="step-btn" data-act="step" data-ex="${exId}" data-si="${si}" data-f="r" data-d="1">+</button>
       </div>
       <button class="check${s.done?' done':''}" data-act="checkset" data-ex="${exId}" data-si="${si}">
@@ -2494,7 +2515,7 @@ function setRowCompactHTML(exId,si,s,lastSet,weightOnly){
   return `<div class="csr${s.done?' done':''}" data-row="${exId}:${si}">
       <div class="csr-n">${si+1}</div>
       <input class="csr-field" type="number" inputmode="decimal" data-f="w" data-ex="${exId}" data-si="${si}" value="${s.w}" placeholder="${wPh}" />
-      <input class="csr-field" type="number" inputmode="numeric" data-f="r" data-ex="${exId}" data-si="${si}" value="${s.r}" placeholder="${rPh}" />
+      <input class="csr-field" type="number" inputmode="decimal" step="any" data-f="r" data-ex="${exId}" data-si="${si}" value="${s.r}" placeholder="${rPh}" />
       <button class="csr-check${s.done?' done':''}" data-act="checkset" data-ex="${exId}" data-si="${si}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
       </button>
@@ -2791,7 +2812,7 @@ document.getElementById("sessionArea").addEventListener("click",(e)=>{
     let val = cur + d*step;
     if(val<0) val=0;
     if(f==="w"){ val=Math.round(val*100)/100; s.w=String(val); }
-    else { s.r=String(Math.round(val)); }
+    else { s.r=String(Math.round(val*10)/10); }
     // update in place to keep things smooth (no full re-render)
     const input=btn.parentElement.querySelector("input");
     if(input) input.value=s[f];
@@ -2945,7 +2966,7 @@ function finishSession(dow){
       const done=ds.filter(s=>s.done && (s.w!==""||s.r!==""));
       if(done.length){
         const sets=done.map(s=>({w:s.w||"0",r:s.r||"0"}));
-        const v=sets.reduce((a,s)=>a+(parseFloat(s.w)||0)*(parseInt(s.r)||0),0);
+        const v=sets.reduce((a,s)=>a+(parseFloat(s.w)||0)*(parseFloat(s.r)||0),0);
         entry.volume+=v;
         entry.exercises.push({name:ex.name, sets, note:draft.notes[ex.id]||""});
         if(draft.effort && draft.effort[ex.id]) entry.effort[ex.name]=draft.effort[ex.id];
@@ -2988,12 +3009,12 @@ function finishSession(dow){
     }
     // heaviest-weight record: heavier bar, or same bar for more reps, wins immediately
     let hv=null;
-    for(const st of e.sets){ const w=parseFloat(st.w)||0, r=parseInt(st.r)||0; if(w<=0||r<=0) continue;
+    for(const st of e.sets){ const w=parseFloat(st.w)||0, r=parseFloat(st.r)||0; if(w<=0||r<=0) continue;
       if(!hv || w>hv.w || (w===hv.w && r>hv.r)) hv={w,r}; }
     if(hv){
       const rec=state.prs[e.name]=state.prs[e.name]||{e1rm:best.e1rm,w:best.w,r:best.r,date:entry.date};
       const pt=rec.top;
-      if(!pt || hv.w>parseFloat(pt.w) || (hv.w===parseFloat(pt.w) && hv.r>parseInt(pt.r))){
+      if(!pt || hv.w>parseFloat(pt.w) || (hv.w===parseFloat(pt.w) && hv.r>parseFloat(pt.r))){
         rec.top={w:hv.w,r:hv.r,date:entry.date};
         if(pt && !celebrated) newPRs.push(e.name+" (weight)");
       }
@@ -3867,7 +3888,7 @@ function historyEditHTML(h){
         out+=`<div class="he-set">
           <span class="he-n">${si+1}</span>
           <input type="number" inputmode="decimal" data-he="w" data-ei="${ei}" data-si="${si}" value="${st.w||""}" placeholder="wt" />
-          <input type="number" inputmode="numeric" data-he="r" data-ei="${ei}" data-si="${si}" value="${st.r||""}" placeholder="reps" />
+          <input type="number" inputmode="decimal" step="any" data-he="r" data-ei="${ei}" data-si="${si}" value="${st.r||""}" placeholder="reps" />
           <button class="he-del" data-act="hedelset" data-h="${h.id}" data-ei="${ei}" data-si="${si}" aria-label="Remove set">&minus;</button>
         </div>`;
       });
@@ -3891,7 +3912,7 @@ function historyEditHTML(h){
 function recomputeVolume(h){
   let v=0;
   for(const e of (h.exercises||[])) for(const s of (e.sets||[])){
-    const w=parseFloat(s.w)||0, r=parseInt(s.r)||0;
+    const w=parseFloat(s.w)||0, r=parseFloat(s.r)||0;
     if(w>0&&r>0) v+=w*r;
   }
   h.volume=Math.round(v);
@@ -4109,21 +4130,51 @@ function psCountTotal(){
     ? `${fmtW(_psBar)} bar + ${fmtW(perSide)} per side  (${parts.join(", ")})`
     : `bar only — ${fmtW(_psBar)} ${units()}`;
 }
+// The sheet slides up and never summons the phone keyboard — its own keypad does the typing,
+// so nothing on screen jumps around.
+let _psField="target";
+function psSetField(f){
+  _psField=f;
+  document.querySelectorAll(".ps-keyfield").forEach(el=>el.classList.toggle("active", el.dataset.field===f));
+}
+function psSyncPad(){
+  const count=document.querySelector('#psModeSeg button.on')?.dataset.mode==="count";
+  const custom=document.getElementById("psCustomBar").classList.contains("show");
+  document.getElementById("psPad").classList.toggle("hide", count && !custom);
+  if(count && custom) psSetField("bar");
+  else if(!count && _psField==="bar" && !custom) psSetField("target");
+}
+function psApply(){
+  if(_psField==="bar"){ _psBar=parseFloat(document.getElementById("psCustomBar").value)||0; }
+  psCalc(); psCountTotal();
+}
+document.getElementById("psPad").addEventListener("click",(e)=>{
+  const b=e.target.closest("button"); if(!b) return;
+  const el=document.getElementById(_psField==="bar"?"psCustomBar":"psTarget");
+  let v=el.value, k=b.dataset.k;
+  const inc = units()==="kg" ? 2.5 : 5;
+  if(k==="back") v=v.slice(0,-1);
+  else if(k==="clear") v="";
+  else if(k==="plus"||k==="minus"){ const n=(parseFloat(v)||0)+(k==="plus"?inc:-inc); v=n>0?fmtW(n):""; }
+  else if(k==="."){ if(!v.includes(".")) v=(v||"0")+"."; }
+  else { if(v==="0") v=""; if(v.replace(".","").length<6 && !(/\.\d{2}$/.test(v))) v+=k; }
+  el.value=v; vibrate(8); psApply();
+});
+document.querySelectorAll(".ps-keyfield").forEach(el=>el.addEventListener("click",()=>psSetField(el.dataset.field)));
 function openPlateSheet(){
+  psSyncPad();
   document.getElementById("plateSheet").classList.add("show");
-  const inp=document.getElementById("psTarget"); inp.focus(); inp.select();
 }
 function closePlateSheet(){ document.getElementById("plateSheet").classList.remove("show"); }
 document.getElementById("plateFab").onclick=openPlateSheet;
 document.getElementById("psClose").onclick=closePlateSheet;
 document.getElementById("plateSheet").addEventListener("click",(e)=>{ if(e.target.id==="plateSheet") closePlateSheet(); });
-document.getElementById("psTarget").addEventListener("input",psCalc);
-document.getElementById("psTarget").addEventListener("keydown",(e)=>{ if(e.key==="Enter") e.target.blur(); });
 document.getElementById("psModeSeg").addEventListener("click",(e)=>{
   const b=e.target.closest("button"); if(!b) return;
   document.querySelectorAll("#psModeSeg button").forEach(x=>x.classList.toggle("on",x===b));
   const count = b.dataset.mode==="count";
   document.getElementById("psTargetMode").style.display = count ? "none" : "";
+  setTimeout(psSyncPad,0);
   document.getElementById("psCountMode").style.display  = count ? "" : "none";
   if(count){ psRenderChips(); psCountTotal(); }
   else { const t=document.getElementById("psTarget"); t.focus(); }
@@ -4150,15 +4201,15 @@ document.getElementById("psBarSeg").addEventListener("click",(e)=>{
   if(b.dataset.bar==="custom"){
     cb.classList.add("show");
     _psBar=parseFloat(cb.value)||0;
-    cb.focus();
+    psSetField("bar");
   } else {
     cb.classList.remove("show");
     _psBar=parseFloat(b.dataset.bar);
+    psSetField("target");
   }
+  psSyncPad();
   psCalc(); psCountTotal();
 });
-document.getElementById("psCustomBar").addEventListener("input",(e)=>{ _psBar=parseFloat(e.target.value)||0; psCalc(); psCountTotal(); });
-document.getElementById("psCustomBar").addEventListener("keydown",(e)=>{ if(e.key==="Enter") e.target.blur(); });
 // show the button only while a lifting day is open on the Train page
 function syncPlateFab(){
   const onTrain = document.getElementById("page-train").classList.contains("active");
