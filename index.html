@@ -235,6 +235,10 @@
   .csr-n{font-variant-numeric:tabular-nums;font-size:12px;color:var(--faint);text-align:center;}
   .csr-field{min-width:0;width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:9px 4px;color:var(--bone);font-size:15px;text-align:center;font-variant-numeric:tabular-nums;}
   .csr-field:focus{outline:none;border-color:var(--amber);}
+  /* number inputs: no spinner gutter, so 3-digit weights fit the narrow superset columns */
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+  input[type=number]{-moz-appearance:textfield;appearance:textfield;}
+  .csr-field{padding-left:2px;padding-right:2px;}
   .csr.done .csr-field{border-color:var(--amber);color:var(--amber);}
   .csr-check{width:30px;height:30px;border-radius:8px;border:1.5px solid var(--line);background:var(--surface-2);display:grid;place-items:center;color:transparent;transition:.12s;}
   .csr-check.done{background:var(--amber);border-color:var(--amber);color:#FDFFE0;}
@@ -1236,7 +1240,7 @@ function defaultWorkouts(){
       ex:[
         mkEx("Lat Pulldown",3,"8–10","Frontal plane — shoulder ADDUCTION. Wide-ish grip, drive the elbows down and out, full stretch at the top.","",90),
         mkEx("Machine Row",3,"8–10","Horizontal. Chest on the pad, pull to the navel, elbows straight back, squeeze the mid-back.","",90),
-        mkEx("Vulken Reverse Grip Pulldown",3,"8–10","Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. The underhand grip pulls in more biceps, so expect it to feel a touch different from the old close-grip bar.","",90),
+        mkEx("Reverse Grip Pulldown",3,"8–10","Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. Lighter on purpose: start at 57 and chase the lat connection — feel the lats finish every rep, not the biceps.","",90),
         mkEx("Rear Delt Fly",2,"8–10","Squeeze, do not swing.","A",60),
         mkEx("Hammer Curl",2,"8–10","Brachialis and brachioradialis — arm width.","A",60),
         mkEx("Shrug",3,"8–10","Upper traps. Straight up, no rolling. Pause and squeeze at the top.","B",75),
@@ -1522,6 +1526,16 @@ function v30fix(){
     renameExercise("Overhead Tricep Extension","Vulken Overhead Tricep Extension");
     renameExercise("Cable Crunch","Vulken Cable Crunch");
     state.vulkenRenameV60 = true;
+  }
+  // v63: Wednesday's rope pulldown -> plain Reverse Grip Pulldown, restarting at 57. Renamed
+  // in place (no re-seed) so a session already open today survives. History is NOT moved:
+  // the 97 lb sessions were too heavy for the movement, so the new name starts clean.
+  if(!state.rgPulldownV63){
+    for(const d of Object.keys(state.workouts||{})){
+      const w=state.workouts[d]; if(!w||!w.ex) continue;
+      for(const ex of w.ex) if(ex.name==="Vulken Reverse Grip Pulldown"){ ex.name="Reverse Grip Pulldown"; ex.cue="Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. Lighter on purpose: start at 57 and chase the lat connection — feel the lats finish every rep, not the biceps."; }
+    }
+    state.rgPulldownV63 = true;
   }
   if(!state.splitRenameV38){
     // Points straight at Leg Press. It used to rename to "Hack Squat", which v43 then
@@ -1818,11 +1832,18 @@ function progHistory(name,limit){
 
 // THE core: what should next session suggest for this exercise?
 // returns {state:'climb'|'earned'|'hold'|'deload'|'start', w, reps, line} or null
+// Starting loads for lifts that were deliberately reset — used only until the first session
+// under that name is logged, then the normal dot-driven ladder takes over.
+const START_WEIGHTS={"Reverse Grip Pulldown":57};
 function suggestFor(ex){
   if(!isProgressable(ex)) return null;
   const rng=parseRange(ex.reps);
   const hist=progHistory(ex.name,5);
-  if(!hist.length) return null;                           // no data yet — no suggestion
+  if(!hist.length){                                       // no data yet — starting weight, if one is set
+    const sw=START_WEIGHTS[ex.name];
+    if(sw && rng) return {state:"climb", w:sw, reps:rng.lo, line:`${fmtW(sw)} × ${rng.lo}`};
+    return null;
+  }
   const last=hist[0];
   const w=last.w || 0;
   const step=tierStep(ex);
@@ -3485,7 +3506,7 @@ const RANGE_LABEL = { "7d":"the last 7 days", "4w":"the last 4 weeks", "6mo":"th
 const COACH_TREND_PICKS={
   monday:   ["Zercher Squat","Hip Thrust","Single-Leg Quad Extension"],
   tuesday:  ["Incline Smith Press","Machine Shoulder Press","Dips (chest-focused)"],
-  wednesday:["Lat Pulldown","Machine Row","Vulken Reverse Grip Pulldown"],
+  wednesday:["Lat Pulldown","Machine Row","Reverse Grip Pulldown"],
   thursday: ["SLDL","Leg Press","Bulgarian Split Squat"],
   friday:   ["Incline DB Press","Converging Chest Press","Vulken Single-Arm Row"]
 };
