@@ -1867,8 +1867,9 @@ function suggestFor(ex){
     return {state:"deload", deloadWeek:true, w:0, bw:true, reps:rng.lo, line:`BW × ${rng.lo} easy`};
   }
   // ---- THE DOT DECIDES. Nothing else overrides it. ----
-  //   red    "repeat"     -> same weight, same reps next time, plus an optional "ease off"
-  //                          that drops the smallest loadable amount (or one rep at bodyweight)
+  //   red    "repeat"     -> same weight, same reps next time. Ease-off only after a streak:
+  //                          2 reds in a row at this weight -> offer one fewer rep,
+  //                          3+ reds in a row -> offer the smallest weight drop (5 lb / 2.5 kg)
   //   yellow "add a rep"  -> same weight, one more rep — and it keeps going PAST the top of
   //                          the range (10 on 8–10 becomes 11): a middle step when you are
   //                          not ready to jump yet but still want to push
@@ -1881,6 +1882,10 @@ function suggestFor(ex){
   const nextRep = Math.floor(lowest) + 1;
   const ease = units()==="kg" ? 2.5 : 5;           // the smallest jump a rack or stack makes
   const assisted = isAssisted(ex.name);
+  // consecutive red sessions at this same weight (newest first)
+  let redStreak=0;
+  for(const h of hist){ if(h.effort==="hold" && h.w===w) redStreak++; else break; }
+  const fewerReps = Math.max(1, repeatReps-1);
 
   // ---- BODYWEIGHT (logged at 0) ----
   if(w<=0){
@@ -1889,9 +1894,9 @@ function suggestFor(ex){
       return {state:"earned", w:add, bw:true, reps:rng.lo, line:`BW +${fmtW(add)} × ${rng.lo}`};
     }
     if(dot==="hold"){
-      const er=Math.max(1, repeatReps-1);
-      return {state:"hold", w:0, bw:true, reps:repeatReps, line:`BW × ${repeatReps}`,
-              ease:{w:0, bw:true, reps:er, line:`BW × ${er}`}};
+      // no weight to take off at bodyweight, so the ease-off is always one fewer rep
+      const easeOpt = redStreak>=2 ? {w:0, bw:true, reps:fewerReps, line:`BW × ${fewerReps}`} : null;
+      return {state:"hold", w:0, bw:true, reps:repeatReps, line:`BW × ${repeatReps}`, ease:easeOpt};
     }
     return {state:"climb", w:0, bw:true, reps:nextRep, line:`BW × ${nextRep}`};
   }
@@ -1904,8 +1909,9 @@ function suggestFor(ex){
     }
     if(dot==="hold"){
       const ew=roundLoadable(w+ease);
-      return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} assist × ${repeatReps}`,
-              ease:{w:ew, reps:repeatReps, line:`${fmtW(ew)} assist × ${repeatReps}`}};
+      const easeOpt = redStreak>=3 ? {w:ew, reps:repeatReps, line:`${fmtW(ew)} assist × ${repeatReps}`}
+                    : redStreak>=2 ? {w:w, reps:fewerReps, line:`${fmtW(w)} assist × ${fewerReps}`} : null;
+      return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} assist × ${repeatReps}`, ease:easeOpt};
     }
     return {state:"climb", w:w, reps:nextRep, line:`${fmtW(w)} assist × ${nextRep}`};
   }
@@ -1917,8 +1923,8 @@ function suggestFor(ex){
   }
   if(dot==="hold"){
     const ew=roundLoadable(w-ease);
-    const easeOpt = ew>0 ? {w:ew, reps:repeatReps, line:`${fmtW(ew)} × ${repeatReps}`}
-                         : {w:w, reps:Math.max(1,repeatReps-1), line:`${fmtW(w)} × ${Math.max(1,repeatReps-1)}`};
+    const easeOpt = (redStreak>=3 && ew>0) ? {w:ew, reps:repeatReps, line:`${fmtW(ew)} × ${repeatReps}`}
+                  : redStreak>=2 ? {w:w, reps:fewerReps, line:`${fmtW(w)} × ${fewerReps}`} : null;
     return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} × ${repeatReps}`, ease:easeOpt};
   }
   return {state:"climb", w:w, reps:nextRep, line:`${fmtW(w)} × ${nextRep}`};
@@ -2376,7 +2382,7 @@ function suggestLineHTML(ex){
 //   green "too light" → finished with more than a couple reps left
 // Rating effort instead of load meant sets taken close to failure read as red and froze
 // progression, which is wrong when close-to-failure IS the prescription.
-const EFFORT_LAB={hold:"repeat · or ease off",ok:"add a rep",go:"add weight"};
+const EFFORT_LAB={hold:"repeat next time",ok:"add a rep",go:"add weight"};
 function effortDotsHTML(exId,draft,compact){
   if(!state.settings.progression) return "";
   const arr=draft.sets[exId]||[];
