@@ -1249,7 +1249,7 @@ function defaultWorkouts(){
       ex:[
         mkEx("Lat Pulldown",3,"8–10","Frontal plane — shoulder ADDUCTION. Wide-ish grip, drive the elbows down and out, full stretch at the top.","",90),
         mkEx("Machine Row",3,"8–10","Horizontal. Chest on the pad, pull to the navel, elbows straight back, squeeze the mid-back.","",90),
-        mkEx("Reverse Grip Pulldown",3,"8–10","Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. Lighter on purpose: start at 57 and chase the lat connection — feel the lats finish every rep, not the biceps.","",90),
+        mkEx("Reverse Grip Pulldown",3,"8–10","Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. Lighter on purpose: start at 52 per arm (7 lb arm + a 45) and chase the lat connection — feel the lats finish every rep, not the biceps.","",90),
         mkEx("Rear Delt Fly",2,"8–10","Squeeze, do not swing.","A",60),
         mkEx("Hammer Curl",2,"8–10","Brachialis and brachioradialis — arm width.","A",60),
         mkEx("Shrug",3,"8–10","Upper traps. Straight up, no rolling. Pause and squeeze at the top.","B",75),
@@ -1540,6 +1540,22 @@ function v30fix(){
   // in place (no re-seed) so a session already open today survives. History is NOT moved:
   // the 97 lb sessions were too heavy for the movement, so the new name starts clean.
   // v64: Smith bar is 30 lb, not 20 — fix the saved cue in place.
+  // v65: the first Reverse Grip Pulldown session (Oct 7) was logged at 57 per arm but was
+  // really 52 (7 lb arm + one 45). Correct it, then re-derive that session's volume and PRs.
+  if(!state.rgPulldown52V65){
+    for(const h of (state.history||[])){
+      if(!h.date || h.date<"2026-10-07") continue;
+      let touched=false;
+      for(const e of (h.exercises||[])) if(e.name==="Reverse Grip Pulldown")
+        for(const st of (e.sets||[])) if(String(st.w)==="57"){ st.w="52"; touched=true; }
+      if(touched){ recomputeVolume(h); recomputePRsForSession(h); }
+    }
+    for(const d of Object.keys(state.workouts||{})){
+      const w=state.workouts[d]; if(!w||!w.ex) continue;
+      for(const ex of w.ex) if(ex.cue) ex.cue=ex.cue.replace("start at 57 and chase","start at 52 per arm (7 lb arm + a 45) and chase");
+    }
+    state.rgPulldown52V65 = true;
+  }
   if(!state.smithCueV64){
     for(const d of Object.keys(state.workouts||{})){
       const w=state.workouts[d]; if(!w||!w.ex) continue;
@@ -1550,7 +1566,7 @@ function v30fix(){
   if(!state.rgPulldownV63){
     for(const d of Object.keys(state.workouts||{})){
       const w=state.workouts[d]; if(!w||!w.ex) continue;
-      for(const ex of w.ex) if(ex.name==="Vulken Reverse Grip Pulldown"){ ex.name="Reverse Grip Pulldown"; ex.cue="Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. Lighter on purpose: start at 57 and chase the lat connection — feel the lats finish every rep, not the biceps."; }
+      for(const ex of w.ex) if(ex.name==="Vulken Reverse Grip Pulldown"){ ex.name="Reverse Grip Pulldown"; ex.cue="Sagittal plane — shoulder EXTENSION. Palms facing you, elbows tight to the body, pull toward the lower chest. Lighter on purpose: start at 52 per arm (7 lb arm + a 45) and chase the lat connection — feel the lats finish every rep, not the biceps."; }
     }
     state.rgPulldownV63 = true;
   }
@@ -1854,7 +1870,7 @@ function progHistory(name,limit){
 // returns {state:'climb'|'earned'|'hold'|'deload'|'start', w, reps, line} or null
 // Starting loads for lifts that were deliberately reset — used only until the first session
 // under that name is logged, then the normal dot-driven ladder takes over.
-const START_WEIGHTS={"Reverse Grip Pulldown":57};
+const START_WEIGHTS={"Reverse Grip Pulldown":52};
 function suggestFor(ex){
   if(!isProgressable(ex)) return null;
   const rng=parseRange(ex.reps);
@@ -1959,7 +1975,8 @@ const BAR_WEIGHTS={"Leg Press":118,"Incline Smith Press":30,"Zercher Squat":45,"
 function roundLoadableFor(name,n){
   const bar=BAR_WEIGHTS[name];
   if(bar===undefined || units()==="kg") return roundLoadable(n);
-  return bar + Math.max(0, Math.round((n-bar)/5)*5);
+  const inc = PER_ARM.has(name) ? 2.5 : 5;
+  return bar + Math.max(0, Math.round((n-bar)/inc)*inc);
 }
 function roundLoadable(n){ const inc = units()==="kg" ? 2.5 : 5; return Math.max(0, Math.round(n/inc)*inc); }
 
@@ -4133,6 +4150,11 @@ document.getElementById("historyList").addEventListener("keydown",(e)=>{
 });
 /* ---------- In-session plate calculator ---------- */
 let _psBar=45;
+// Iso-lateral machines are logged per ARM: the number is one arm's load, so all of it goes on
+// that one arm instead of being split across two sides.
+const PER_ARM=new Set(["Reverse Grip Pulldown"]);
+let _psSides=2;
+function psSideWord(){ return _psSides===1 ? "on the arm" : "per side"; }
 function psCalc(){
   const t=parseFloat(document.getElementById("psTarget").value);
   const out=document.getElementById("psOut"), res=document.getElementById("psResult");
@@ -4140,15 +4162,15 @@ function psCalc(){
   if(isNaN(t)){ res.textContent="Enter a target weight"; return; }
   if(t<_psBar){ res.textContent=`${fmtW(_psBar)} ${units()} empty — target is below that`; return; }
   const plates = units()==="kg" ? PLATES_KG : PLATES_LB;
-  let perSide=(t-_psBar)/2, remaining=perSide;
+  let perSide=(t-_psBar)/_psSides, remaining=perSide;
   const counts={};
   for(const p of plates){ const n=Math.floor(remaining/p+1e-9); if(n>0){ counts[p]=n; remaining-=n*p; } }
   for(const p of plates){ if(counts[p]){ const el=document.createElement("div"); el.className="plate";
-    el.innerHTML=`<span class="pw">${p}</span><span class="pc">×${counts[p]} /side</span>`; out.appendChild(el); } }
-  const loaded=_psBar+2*(perSide-remaining);
+    el.innerHTML=`<span class="pw">${p}</span><span class="pc">×${counts[p]} ${_psSides===1?"/arm":"/side"}</span>`; out.appendChild(el); } }
+  const loaded=_psBar+_psSides*(perSide-remaining);
   if(!Object.keys(counts).length) res.textContent=`Empty — ${fmtW(_psBar)} ${units()}, no plates`;
   else if(remaining>0.01) res.textContent=`Closest: ${fmtW(loaded)} ${units()} — can't make ${fmtW(t)} exactly`;
-  else res.textContent=`${fmtW(t)} ${units()} = ${fmtW(_psBar)} + ${fmtW(perSide)} per side`;
+  else res.textContent=`${fmtW(t)} ${units()} = ${fmtW(_psBar)} + ${fmtW(perSide)} ${psSideWord()}`;
 }
 /* Plates -> Weight: tap what is actually loaded on one side and read the total. */
 let _psCount={};
@@ -4163,11 +4185,11 @@ function psRenderChips(){
 function psCountTotal(){
   let perSide=0;
   for(const p in _psCount) perSide += (+p)*_psCount[p];
-  const total=_psBar + perSide*2;
+  const total=_psBar + perSide*_psSides;
   document.getElementById("psTotal").textContent = perSide||_psBar ? `${fmtW(total)} ${units()}` : "—";
   const parts=psPlateList().filter(p=>_psCount[p]).map(p=>`${p}×${_psCount[p]}`);
   document.getElementById("psBreak").textContent = parts.length
-    ? `${fmtW(_psBar)} bar + ${fmtW(perSide)} per side  (${parts.join(", ")})`
+    ? `${fmtW(_psBar)} base + ${fmtW(perSide)} ${psSideWord()}  (${parts.join(", ")})`
     : `bar only — ${fmtW(_psBar)} ${units()}`;
 }
 // The sheet slides up and never summons the phone keyboard — its own keypad does the typing,
@@ -4233,6 +4255,8 @@ function openPlateSheet(){
         btn=document.querySelector('#psBarSeg button[data-bar="custom"]');
       }
       if(btn) btn.click();
+      _psSides = PER_ARM.has(ctx.ex.name) ? 1 : 2;
+      psCountTotal();
       if(ctx.wt){ document.getElementById("psTarget").value=ctx.wt; }
       psSetField("target"); psCalc();
     }
@@ -4271,6 +4295,7 @@ document.getElementById("psChips").addEventListener("contextmenu",(e)=>{
 document.getElementById("psClear").onclick=()=>{ _psCount={}; psRenderChips(); psCountTotal(); vibrate(10); };
 document.getElementById("psBarSeg").addEventListener("click",(e)=>{
   const b=e.target.closest("button"); if(!b) return;
+  _psSides=2;
   document.querySelectorAll("#psBarSeg button").forEach(x=>x.classList.toggle("on",x===b));
   const cb=document.getElementById("psCustomBar");
   if(b.dataset.bar==="custom"){
