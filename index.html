@@ -318,6 +318,7 @@
   .ss-suggest.load{background:var(--amber-soft);border-color:rgba(83,111,80,.35);color:var(--amber);}
   .ss-suggest.deload{background:rgba(166,58,38,.13);border-color:rgba(166,58,38,.3);color:var(--danger);}
   .ss-suggest:active{transform:scale(.98);}
+  .ss-suggest.ease{margin-top:4px;background:rgba(166,58,38,.08);border-color:rgba(166,58,38,.30);color:#8A3A26;font-weight:600;}
   .effort-dots{display:flex;align-items:center;gap:10px;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);
     opacity:.4;pointer-events:none;transition:opacity .2s;}
   .effort-dots.live{opacity:1;pointer-events:auto;}
@@ -487,6 +488,14 @@
   .ex-ready .rd-go{flex:0 0 auto;font-size:11px;font-weight:800;color:#FDFFE0;background:#2F6A3A;
     border:1px solid #2F6A3A;border-radius:7px;padding:5px 11px;}
   .ex-ready .rd-go:active{transform:scale(.95);}
+  .ex-ease{margin-top:6px;display:flex;align-items:center;gap:8px;font-size:12px;
+    background:rgba(166,58,38,.08);border:1px solid rgba(166,58,38,.30);border-radius:10px;padding:7px 10px;color:#8A3A26;}
+  .ex-ease .rd-ico{font-weight:800;font-size:14px;line-height:1;}
+  .ex-ease .rd-txt{flex:1;min-width:0;}
+  .ex-ease .rd-txt b{font-variant-numeric:tabular-nums;}
+  .ex-ease .rd-go{flex:0 0 auto;font-size:11px;font-weight:800;color:#8A3A26;background:#FDFFE0;
+    border:1px solid rgba(166,58,38,.45);border-radius:7px;padding:5px 11px;}
+  .ex-ease .rd-go:active{transform:scale(.95);}
   .flex-tabs{display:flex;gap:6px;flex-wrap:wrap;}
   .flex-tab{flex:1 1 28%;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);border-radius:10px;padding:9px 0;font-size:13px;cursor:pointer;}
   .flex-tab.on{background:var(--amber-soft);border-color:var(--amber);color:var(--amber);font-weight:700;}
@@ -1857,92 +1866,61 @@ function suggestFor(ex){
     }
     return {state:"deload", deloadWeek:true, w:0, bw:true, reps:rng.lo, line:`BW × ${rng.lo} easy`};
   }
-  const atTop = last.reps.length>0 && last.reps.every(r=>r>=rng.hi);
-  const grind = last.effort==="hold";
+  // ---- THE DOT DECIDES. Nothing else overrides it. ----
+  //   red    "repeat"     -> same weight, same reps next time, plus an optional "ease off"
+  //                          that drops the smallest loadable amount (or one rep at bodyweight)
+  //   yellow "add a rep"  -> same weight, one more rep — and it keeps going PAST the top of
+  //                          the range (10 on 8–10 becomes 11): a middle step when you are
+  //                          not ready to jump yet but still want to push
+  //   green  "add weight" -> one step up, reps back to the bottom of the range
+  // Untagged sessions count as yellow. Half reps (9.5) aim for whole reps: red finishes the
+  // rep you missed (10), yellow goes to the next whole rep (10).
+  const dot = last.effort || "ok";
+  const lowest = Math.min(...last.reps);
+  const repeatReps = Math.max(1, Math.ceil(lowest));
+  const nextRep = Math.floor(lowest) + 1;
+  const ease = units()==="kg" ? 2.5 : 5;           // the smallest jump a rack or stack makes
+  const assisted = isAssisted(ex.name);
 
-  // ---- BODYWEIGHT path (logged at weight 0: pull-ups, push-ups, etc.) ----
-  // Form-first: climb reps to the top at bodyweight, and only suggest ADDING load once
-  // the top range is owned for TWO sessions running AND the last was tapped green (easy).
+  // ---- BODYWEIGHT (logged at 0) ----
   if(w<=0){
-    // owned the top for the two most recent sessions?
-    const ownedTwice = hist.length>=2
-      && hist[0].reps.length>0 && hist[0].reps.every(r=>r>=rng.hi)
-      && hist[1].reps.length>0 && hist[1].reps.every(r=>r>=rng.hi);
-    const lastGreen = last.effort==="go";
-    if(ownedTwice && lastGreen){
-      // first load on a bodyweight movement is deliberately gentle — the smallest loadable
-      // increment, not the full tier step — since form under load is new. After this it
-      // becomes a normal weighted exercise and progresses on the usual tiers.
-      const firstLoad = units()==="kg" ? 2.5 : 5;
-      const add = roundLoadable(firstLoad);
+    if(dot==="go" && !assisted){
+      const add=roundLoadable(ease);
       return {state:"earned", w:add, bw:true, reps:rng.lo, line:`BW +${fmtW(add)} × ${rng.lo}`};
     }
-    if(atTop){
-      // at the top but not yet two-sessions-green → hold here and keep owning the form
-      return {state:"hold", w:0, bw:true, reps:rng.hi, line:`BW × ${rng.hi}`};
+    if(dot==="hold"){
+      const er=Math.max(1, repeatReps-1);
+      return {state:"hold", w:0, bw:true, reps:repeatReps, line:`BW × ${repeatReps}`,
+              ease:{w:0, bw:true, reps:er, line:`BW × ${er}`}};
     }
-    // red means repeat — same reps next time, same as the weighted path
-    if(grind){
-      const same=Math.ceil(Math.min(...last.reps));
-      return {state:"hold", w:0, bw:true, reps:same, line:`BW × ${same}`};
-    }
-    // still climbing reps at bodyweight
-    const nextRepBW=Math.min(rng.hi, Math.floor(Math.min(...last.reps))+1);
-    return {state:"climb", w:0, bw:true, reps:nextRepBW, line:`BW × ${nextRepBW}`};
+    return {state:"climb", w:0, bw:true, reps:nextRep, line:`BW × ${nextRep}`};
   }
 
-  // ---- WEIGHTED path ----
-  // NOTE: there used to be an automatic ~10% back-off here after several red sessions
-  // with no rep progress. It has been removed. Red now means exactly what it says —
-  // repeat this load next time — and holding a weight deliberately to clean up form is
-  // a legitimate reason to sit on it for weeks. Nothing overrides the dot.
-
-  // ---- One-time recalibration when the rep RANGE itself moved ----
-  // If the last session's reps sit above the new ceiling, that weight was chosen for a
-  // different (higher) rep target — carrying it straight over would mean doing LESS work
-  // than before. Rebase the load to the weight that gives the same estimated 1RM at the
-  // new top of the range. Fires once; the next session is logged in-range so it stops.
-  // Assisted lifts are skipped, since their number is help given, not load lifted.
-  if(!isAssisted(ex.name) && w>0 && Math.min(...last.reps) > rng.hi){
-    const oldReps=Math.min(...last.reps);
-    const target=e1rm(w,oldReps)/(1+Math.min(rng.hi,20)/30);
-    const nw=roundLoadable(target);
-    if(nw>w) return {state:"earned", w:nw, reps:rng.hi, line:`${fmtW(nw)} × ${rng.hi}`};
-  }
-
-  // ---- THE DOT DECIDES. Nothing else. ----
-  //   green  "add weight"  -> one step up, reps reset to the bottom of the range
-  //   gold   "add a rep"   -> +1 rep, or hold at the top if already there
-  //   red    "repeat"      -> same weight, same reps, next session
-  // Untagged sessions fall back to gold, which is the conservative option.
-  const dot = last.effort || "ok";
-  // A half rep (9.5) counts toward the climb but suggestions always target whole reps:
-  // "repeat" aims to finish the rep you missed, "add a rep" goes to the next whole one.
-  const lagging = Math.ceil(Math.min(...last.reps));
-  const laggingUp = Math.floor(Math.min(...last.reps)) + 1;
-
-  // Assisted lifts (dips, pull-ups) log how much HELP the machine gives, so "add weight"
-  // means take assistance away. The whole ladder runs backwards for them.
-  if(isAssisted(ex.name)){
+  // ---- ASSISTED (dips, pull-ups): the number is help given, so the ladder runs backwards ----
+  if(assisted){
     if(dot==="go"){
       const nw=Math.max(0, roundLoadable(w-step));
-      return {state:"earned", w:nw, reps:rng.lo,
-              line: nw>0 ? `${fmtW(nw)} assist × ${rng.lo}` : `bodyweight × ${rng.lo}`};
+      return {state:"earned", w:nw, reps:rng.lo, line: nw>0 ? `${fmtW(nw)} assist × ${rng.lo}` : `bodyweight × ${rng.lo}`};
     }
-    if(dot==="hold") return {state:"hold", w:w, reps:lagging, line:`${fmtW(w)} assist × ${lagging}`};
-    const nr=Math.min(rng.hi, laggingUp);
-    return {state:"climb", w:w, reps:nr, line:`${fmtW(w)} assist × ${nr}`};
+    if(dot==="hold"){
+      const ew=roundLoadable(w+ease);
+      return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} assist × ${repeatReps}`,
+              ease:{w:ew, reps:repeatReps, line:`${fmtW(ew)} assist × ${repeatReps}`}};
+    }
+    return {state:"climb", w:w, reps:nextRep, line:`${fmtW(w)} assist × ${nextRep}`};
   }
 
+  // ---- WEIGHTED ----
   if(dot==="go"){
     const nw=roundLoadable(w+step);
     return {state:"earned", w:nw, reps:rng.lo, line:`${fmtW(nw)} × ${rng.lo}`};
   }
   if(dot==="hold"){
-    return {state:"hold", w:w, reps:lagging, line:`${fmtW(w)} × ${lagging}`};
+    const ew=roundLoadable(w-ease);
+    const easeOpt = ew>0 ? {w:ew, reps:repeatReps, line:`${fmtW(ew)} × ${repeatReps}`}
+                         : {w:w, reps:Math.max(1,repeatReps-1), line:`${fmtW(w)} × ${Math.max(1,repeatReps-1)}`};
+    return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} × ${repeatReps}`, ease:easeOpt};
   }
-  // gold: climb a rep, or sit at the top of the range until you tap green
-  const nextRep=Math.min(rng.hi, laggingUp);
   return {state:"climb", w:w, reps:nextRep, line:`${fmtW(w)} × ${nextRep}`};
 }
 // trim trailing .0 so "100" not "100.0", keep .5 for kg
@@ -2384,8 +2362,13 @@ function suggestLineHTML(ex){
       <span class="rd-txt">${ready.n} sessions at the top — ready for <b>${fmtW(ready.w)} ${units()}</b></span>
       <button class="rd-go" data-act="useSuggest" data-ex="${ex.id}" data-w="${ready.w}" data-r="${ready.reps}" data-bw="0">Move up</button>
     </div>` : "";
+  const easeNudge = s.ease ? `<div class="ex-ease">
+      <span class="rd-ico">↓</span>
+      <span class="rd-txt">Not feeling it? Ease off to <b>${s.ease.line}</b></span>
+      <button class="rd-go" data-act="useSuggest" data-ex="${ex.id}" data-w="${s.ease.w}" data-r="${s.ease.reps}" data-bw="${s.ease.bw?1:0}">Ease off</button>
+    </div>` : "";
   return `<div class="ex-suggest${cls}"><span>Suggested:</span> <span class="mono">${s.line}</span>
-      <button class="sug-use" data-act="useSuggest" data-ex="${ex.id}" data-w="${s.w}" data-r="${s.reps}" data-bw="${s.bw?1:0}">Use</button></div>${nudge}`;
+      <button class="sug-use" data-act="useSuggest" data-ex="${ex.id}" data-w="${s.w}" data-r="${s.reps}" data-bw="${s.bw?1:0}">Use</button></div>${nudge}${easeNudge}`;
 }
 // Three dots — these rate WHETHER THE WEIGHT WAS RIGHT, not raw effort.
 //   red  "too heavy"  → form broke down or you missed the rep range
@@ -2393,7 +2376,7 @@ function suggestLineHTML(ex){
 //   green "too light" → finished with more than a couple reps left
 // Rating effort instead of load meant sets taken close to failure read as red and froze
 // progression, which is wrong when close-to-failure IS the prescription.
-const EFFORT_LAB={hold:"repeat next time",ok:"add a rep",go:"add weight"};
+const EFFORT_LAB={hold:"repeat · or ease off",ok:"add a rep",go:"add weight"};
 function effortDotsHTML(exId,draft,compact){
   if(!state.settings.progression) return "";
   const arr=draft.sets[exId]||[];
@@ -2580,7 +2563,8 @@ function suggestLineCompactHTML(ex){
   const s=suggestFor(ex);
   if(!s) return "";
   const cls = s.state==="earned" ? " load" : (s.state==="deload" ? " deload" : "");
-  return `<button class="ss-suggest${cls}" data-act="useSuggest" data-ex="${ex.id}" data-w="${s.w}" data-r="${s.reps}" data-bw="${s.bw?1:0}">→ ${s.line}</button>`;
+  const easeChip = s.ease ? `<button class="ss-suggest ease" data-act="useSuggest" data-ex="${ex.id}" data-w="${s.ease.w}" data-r="${s.ease.reps}" data-bw="${s.ease.bw?1:0}">↓ ${s.ease.line}</button>` : "";
+  return `<button class="ss-suggest${cls}" data-act="useSuggest" data-ex="${ex.id}" data-w="${s.w}" data-r="${s.reps}" data-bw="${s.bw?1:0}">→ ${s.line}</button>${easeChip}`;
 }
 
 const CARDIO_MODES=[
