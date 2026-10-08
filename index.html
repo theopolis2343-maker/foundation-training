@@ -1811,10 +1811,13 @@ function exTier(ex){
 // machine gives, so LESS weight is a stronger set. Progression has to run backwards
 // for these or the engine would "reward" a good session by adding assistance.
 function isAssisted(name){ return /^(dips|pull-?up)/i.test(name||""); }
-function tierStep(ex){
+function tierStep(ex,w){
   const ov=state.progOverride && state.progOverride[ex.name];
   if(ov && ov.step) return ov.step;
   const kg = units()==="kg";
+  // Light loads move in small jumps: 10 lb on a 55 lb shoulder press is an 18% leap.
+  // Under 100 lb (45 kg) everything goes up 5 lb (2.5 kg); the big jump is for heavy lifts.
+  if(w!==undefined && w>0 && w < (kg?45:100)) return kg?2.5:5;
   // Dumbbell lifts are logged per hand and racks go up in 5 lb jumps, so the usual
   // 10 lb compound step would suggest a dumbbell that is not on the rack.
   if(/\bdb\b|dumbbell/i.test(ex.name||"")) return kg?2.5:5;
@@ -1855,7 +1858,7 @@ function suggestFor(ex){
   }
   const last=hist[0];
   const w=last.w || 0;
-  const step=tierStep(ex);
+  const step=tierStep(ex,w);
 
   // ---- DELOAD WEEK: overrides everything. 60% of last load, bottom of the range,
   // nothing near failure. Bodyweight movements: same reps target, stop far from failure.
@@ -1871,15 +1874,19 @@ function suggestFor(ex){
   //                          2 reds in a row at this weight -> offer one fewer rep,
   //                          3+ reds in a row -> offer the smallest weight drop (5 lb / 2.5 kg)
   //   yellow "add a rep"  -> same weight, one more rep — and it keeps going PAST the top of
-  //                          the range (10 on 8–10 becomes 11): a middle step when you are
-  //                          not ready to jump yet but still want to push
+  //                          the range (10 on 8–10 becomes 11), up to two reps past the top;
+  //                          at that ceiling yellow turns into the weight jump
   //   green  "add weight" -> one step up, reps back to the bottom of the range
   // Untagged sessions count as yellow. Half reps (9.5) aim for whole reps: red finishes the
   // rep you missed (10), yellow goes to the next whole rep (10).
   const dot = last.effort || "ok";
   const lowest = Math.min(...last.reps);
   const repeatReps = Math.max(1, Math.ceil(lowest));
-  const nextRep = Math.floor(lowest) + 1;
+  // Yellow climbs past the range but only TWO reps past the top (12 on 8–10, 7 on 3×5).
+  // Once you are there, yellow stops adding reps and offers the weight jump instead.
+  const repCap = rng.hi + 2;
+  const atCap = lowest >= repCap;
+  const nextRep = Math.min(repCap, Math.floor(lowest) + 1);
   const ease = units()==="kg" ? 2.5 : 5;           // the smallest jump a rack or stack makes
   const assisted = isAssisted(ex.name);
   // consecutive red sessions at this same weight (newest first)
@@ -1898,17 +1905,21 @@ function suggestFor(ex){
       const easeOpt = redStreak>=2 ? {w:0, bw:true, reps:fewerReps, line:`BW × ${fewerReps}`} : null;
       return {state:"hold", w:0, bw:true, reps:repeatReps, line:`BW × ${repeatReps}`, ease:easeOpt};
     }
+    if(atCap && !assisted){
+      const add=roundLoadable(ease);
+      return {state:"earned", w:add, bw:true, reps:rng.lo, line:`BW +${fmtW(add)} × ${rng.lo}`};
+    }
     return {state:"climb", w:0, bw:true, reps:nextRep, line:`BW × ${nextRep}`};
   }
 
   // ---- ASSISTED (dips, pull-ups): the number is help given, so the ladder runs backwards ----
   if(assisted){
-    if(dot==="go"){
-      const nw=Math.max(0, roundLoadable(w-step));
+    if(dot==="go" || (dot==="ok" && atCap)){
+      const nw=Math.max(0, w-step);
       return {state:"earned", w:nw, reps:rng.lo, line: nw>0 ? `${fmtW(nw)} assist × ${rng.lo}` : `bodyweight × ${rng.lo}`};
     }
     if(dot==="hold"){
-      const ew=roundLoadable(w+ease);
+      const ew=w+ease;
       const easeOpt = redStreak>=3 ? {w:ew, reps:repeatReps, line:`${fmtW(ew)} assist × ${repeatReps}`}
                     : redStreak>=2 ? {w:w, reps:fewerReps, line:`${fmtW(w)} assist × ${fewerReps}`} : null;
       return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} assist × ${repeatReps}`, ease:easeOpt};
@@ -1917,12 +1928,12 @@ function suggestFor(ex){
   }
 
   // ---- WEIGHTED ----
-  if(dot==="go"){
-    const nw=roundLoadable(w+step);
+  if(dot==="go" || (dot==="ok" && atCap)){
+    const nw=w+step;          // already-loaded weight + one step stays loadable (no snapping)
     return {state:"earned", w:nw, reps:rng.lo, line:`${fmtW(nw)} × ${rng.lo}`};
   }
   if(dot==="hold"){
-    const ew=roundLoadable(w-ease);
+    const ew=w-ease;
     const easeOpt = (redStreak>=3 && ew>0) ? {w:ew, reps:repeatReps, line:`${fmtW(ew)} × ${repeatReps}`}
                   : redStreak>=2 ? {w:w, reps:fewerReps, line:`${fmtW(w)} × ${fewerReps}`} : null;
     return {state:"hold", w:w, reps:repeatReps, line:`${fmtW(w)} × ${repeatReps}`, ease:easeOpt};
@@ -2353,7 +2364,7 @@ function readyToLoad(ex){
   }
   if(n<2) return null;
   const w=hist[0].w||0; if(w<=0) return null;
-  const nw=roundLoadable(w+tierStep(ex));
+  const nw=w+tierStep(ex,w);
   if(nw<=w) return null;
   return {n, w:nw, reps:rng.lo};
 }
