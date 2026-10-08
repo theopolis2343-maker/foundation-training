@@ -1039,7 +1039,7 @@
       <span class="ps-lab">Bar</span>
       <div class="ps-barseg" id="psBarSeg">
         <button data-bar="45" class="on">Bar<small>45</small></button>
-        <button data-bar="30">Smith<small>30</small></button>
+        <button data-bar="20">Smith<small>20</small></button>
         <button data-bar="118">Leg Press<small>118</small></button>
         <button data-bar="custom">Other<small>set</small></button>
       </div>
@@ -1227,7 +1227,7 @@ function defaultWorkouts(){
         "2–3 ramp-up sets on the first lift, 0–2 on the second"
       ],
       ex:[
-        mkEx("Incline Smith Press",3,"5","Bench LOW at ~15°. Your heavy press — the Smith bar starts at 30 lb, so log the total. Touch just below the collarbone, drive up and slightly back.","",180),
+        mkEx("Incline Smith Press",3,"5","Bench LOW at ~15°. Your heavy press — the Smith bar starts at 20 lb, so log the total. Touch just below the collarbone, drive up and slightly back.","",180),
         mkEx("Dips (chest-focused)",3,"8–10","Assist machine — progress by REDUCING assistance. Lean the torso forward, big stretch at the bottom.","",120),
         mkEx("Machine Shoulder Press",3,"8–10","Your only vertical press — this is the gap that was holding your delts back. Press without shrugging, control the way down.","",120),
         mkEx("Pec Deck Fly",3,"8–10","Both arms together. Elbows slightly bent, big stretch at the back, squeeze the handles together across the chest and pause.","",75),
@@ -1539,7 +1539,15 @@ function v30fix(){
   // v63: Wednesday's rope pulldown -> plain Reverse Grip Pulldown, restarting at 57. Renamed
   // in place (no re-seed) so a session already open today survives. History is NOT moved:
   // the 97 lb sessions were too heavy for the movement, so the new name starts clean.
-  // v64: Smith bar is 30 lb, not 20 — fix the saved cue in place.
+  // v66: Smith bar is 20 lb after all — undo the 30 lb cue v64 may have written.
+  if(!state.smithCue20V66){
+    for(const d of Object.keys(state.workouts||{})){
+      const w=state.workouts[d]; if(!w||!w.ex) continue;
+      for(const ex of w.ex) if(ex.cue) ex.cue=ex.cue.replace("the Smith bar starts at 30 lb","the Smith bar starts at 20 lb");
+    }
+    state.smithCue20V66 = true;
+  }
+  // v64: label the Smith bar in the saved cue (in place).
   // v65: the first Reverse Grip Pulldown session (Oct 7) was logged at 57 per arm but was
   // really 52 (7 lb arm + one 45). Correct it, then re-derive that session's volume and PRs.
   if(!state.rgPulldown52V65){
@@ -1559,7 +1567,7 @@ function v30fix(){
   if(!state.smithCueV64){
     for(const d of Object.keys(state.workouts||{})){
       const w=state.workouts[d]; if(!w||!w.ex) continue;
-      for(const ex of w.ex) if(ex.cue) ex.cue=ex.cue.replace("bar starts at 20 lb","the Smith bar starts at 30 lb");
+      for(const ex of w.ex) if(ex.cue) ex.cue=ex.cue.replace("— bar starts at 20 lb","— the Smith bar starts at 20 lb");
     }
     state.smithCueV64 = true;
   }
@@ -1970,7 +1978,7 @@ function fmtW(n){ return (Math.round(n*10)/10).toString().replace(/\.0$/,""); }
 // Empty weight of the bar / sled each lift is loaded on (lb). Totals for these lifts are only
 // ever bar + plates, so anything the app computes snaps to bar + a multiple of 5 (2.5 a side).
 // The plate calculator uses the same table to pick its preset automatically.
-const BAR_WEIGHTS={"Leg Press":118,"Incline Smith Press":30,"Zercher Squat":45,"SLDL":45,
+const BAR_WEIGHTS={"Leg Press":118,"Incline Smith Press":20,"Zercher Squat":45,"SLDL":45,
                    "Reverse Grip Pulldown":7,"Seated Calf Raise":60};
 function roundLoadableFor(name,n){
   const bar=BAR_WEIGHTS[name];
