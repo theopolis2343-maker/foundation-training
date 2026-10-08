@@ -1864,7 +1864,7 @@ function suggestFor(ex){
   // nothing near failure. Bodyweight movements: same reps target, stop far from failure.
   if(state.deload && state.deload.active){
     if(w>0){
-      const dw=roundLoadable(w*0.6);
+      const dw=roundLoadableFor(ex.name, w*0.6);
       return {state:"deload", deloadWeek:true, w:dw, reps:rng.lo, line:`${fmtW(dw)} × ${rng.lo}`};
     }
     return {state:"deload", deloadWeek:true, w:0, bw:true, reps:rng.lo, line:`BW × ${rng.lo} easy`};
@@ -1943,6 +1943,15 @@ function suggestFor(ex){
 // trim trailing .0 so "100" not "100.0", keep .5 for kg
 function fmtW(n){ return (Math.round(n*10)/10).toString().replace(/\.0$/,""); }
 // snap a weight to something actually loadable: nearest 5 lb or 2.5 kg, floored at 0
+// Empty weight of the bar / sled each lift is loaded on (lb). Totals for these lifts are only
+// ever bar + plates, so anything the app computes snaps to bar + a multiple of 5 (2.5 a side).
+// The plate calculator uses the same table to pick its preset automatically.
+const BAR_WEIGHTS={"Leg Press":118,"Incline Smith Press":20,"Zercher Squat":45,"SLDL":45};
+function roundLoadableFor(name,n){
+  const bar=BAR_WEIGHTS[name];
+  if(bar===undefined || units()==="kg") return roundLoadable(n);
+  return bar + Math.max(0, Math.round((n-bar)/5)*5);
+}
 function roundLoadable(n){ const inc = units()==="kg" ? 2.5 : 5; return Math.max(0, Math.round(n/inc)*inc); }
 
 /* =========================================================
@@ -4183,7 +4192,34 @@ document.getElementById("psPad").addEventListener("click",(e)=>{
   el.value=v; vibrate(8); psApply();
 });
 document.querySelectorAll(".ps-keyfield").forEach(el=>el.addEventListener("click",()=>psSetField(el.dataset.field)));
+// Open the calculator for whichever exercise is on screen: pick its bar / sled preset and fill
+// in the weight you are about to lift (what is typed in set 1, else the suggestion).
+function psContextExercise(){
+  const w=_selectedDow ? activeWorkout(_selectedDow) : null; if(!w || !w.ex) return null;
+  const mid=window.innerHeight*0.38; let best=null, bestD=Infinity;
+  document.querySelectorAll('#page-train .card[data-ex], #page-train .ss-col[data-ex]').forEach(el=>{
+    const r=el.getBoundingClientRect(); if(r.bottom<0 || r.top>window.innerHeight) return;
+    const d = (mid>=r.top && mid<=r.bottom) ? 0 : Math.min(Math.abs(r.top-mid),Math.abs(r.bottom-mid));
+    if(d<bestD){ bestD=d; best=el; }
+  });
+  if(!best) return null;
+  const ex=w.ex.find(e=>e.id===best.dataset.ex); if(!ex) return null;
+  const typed=[...best.querySelectorAll('input[data-f="w"]')].map(i=>i.value).find(v=>v);
+  const sug=state.settings.progression ? suggestFor(ex) : null;
+  const wt = typed || (sug && !sug.bw && sug.w>0 ? String(sug.w) : "");
+  return {ex, wt};
+}
 function openPlateSheet(){
+  const ctx=psContextExercise();
+  if(ctx){
+    const bar=BAR_WEIGHTS[ctx.ex.name];
+    if(bar!==undefined){                 // plate-loaded lifts only — a stack weight means nothing here
+      const btn=document.querySelector(`#psBarSeg button[data-bar="${bar}"]`);
+      if(btn) btn.click();
+      if(ctx.wt){ document.getElementById("psTarget").value=ctx.wt; }
+      psSetField("target"); psCalc();
+    }
+  }
   psSyncPad();
   document.getElementById("plateSheet").classList.add("show");
 }
