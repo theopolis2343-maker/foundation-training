@@ -1542,6 +1542,14 @@ function v30fix(){
   // v66: Smith bar is 20 lb after all — undo the 30 lb cue v64 may have written.
   // v67: "Vulken Single-Arm Row" -> "Vulken Seated Row". Label only, so history, PRs and
   // dots carry across; renamed in place so a session open today is kept.
+  // v68: the adductor and abductor machines were logged the wrong way round. Swap every
+  // record between them (sets, dots, PRs, overrides) so each lift owns its real history.
+  if(!state.addAbdSwapV68){
+    renameExercise("Adductor Machine","__swap_add_abd__");
+    renameExercise("Abductor Machine","Adductor Machine");
+    renameExercise("__swap_add_abd__","Abductor Machine");
+    state.addAbdSwapV68 = true;
+  }
   if(!state.seatedRowV67){
     renameExercise("Vulken Single-Arm Row","Vulken Seated Row");
     for(const d of Object.keys(state.workouts||{})){
