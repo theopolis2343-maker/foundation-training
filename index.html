@@ -1292,7 +1292,7 @@ function defaultWorkouts(){
         mkEx("Incline DB Press",3,"6–8","Opens the day while you are freshest — the heaviest press of the session. Bench at ~30°. Log the weight of ONE dumbbell, not the pair: starting at 60 means a 60 in each hand. Deep stretch at the bottom, controlled all the way.","",150),
         mkEx("Vulken Lat Pulldown",3,"8–10","Rope version of Wednesday's bar pulldown, so it starts its own numbers. Hold the ends, pull them APART as you drive the elbows down and out to the upper chest. Full stretch at the top.","",90),
         mkEx("Converging Chest Press",3,"8–10","Flat/mid angle — the chest work your incline movements miss. Let the handles arc IN as you press so the reps finish with the chest squeezed together, not just pushed forward. Full stretch back at the bottom.","",120),
-        mkEx("Vulken Single-Arm Row",3,"8–10 / arm","Cable, one end of the rope. Unilateral, so it evens out side to side. Brace the torso, pull to your hip with the elbow tight, full stretch at the bottom of every rep. Stay on the cable — a dumbbell load is not comparable and would throw the suggestions off.","",90),
+        mkEx("Vulken Seated Row",3,"8–10 / arm","Cable, one end of the rope. Unilateral, so it evens out side to side. Brace the torso, pull to your hip with the elbow tight, full stretch at the bottom of every rep. Stay on the cable — a dumbbell load is not comparable and would throw the suggestions off.","",90),
         mkEx("Lateral Raise",3,"8–10","Second lateral session. Shoulder width is the goal.","A",60),
         mkEx("Kelso Shrug",3,"8–10","Chest-supported row position, arms STRAIGHT — shrug the shoulder blades together. Mid-traps and rhomboids, not upper traps.","A",60),
         mkEx("Bayesian Cable Curl",3,"8–10","Cable behind you, arm stretched back — the long head in its lengthened position.","B",60),
@@ -1540,6 +1540,16 @@ function v30fix(){
   // in place (no re-seed) so a session already open today survives. History is NOT moved:
   // the 97 lb sessions were too heavy for the movement, so the new name starts clean.
   // v66: Smith bar is 20 lb after all — undo the 30 lb cue v64 may have written.
+  // v67: "Vulken Single-Arm Row" -> "Vulken Seated Row". Label only, so history, PRs and
+  // dots carry across; renamed in place so a session open today is kept.
+  if(!state.seatedRowV67){
+    renameExercise("Vulken Single-Arm Row","Vulken Seated Row");
+    for(const d of Object.keys(state.workouts||{})){
+      const w=state.workouts[d]; if(!w||!w.ex) continue;
+      for(const ex of w.ex) if(ex.name==="Vulken Single-Arm Row") ex.name="Vulken Seated Row";
+    }
+    state.seatedRowV67 = true;
+  }
   if(!state.smithCue20V66){
     for(const d of Object.keys(state.workouts||{})){
       const w=state.workouts[d]; if(!w||!w.ex) continue;
@@ -1634,6 +1644,16 @@ function v30fix(){
     state.topBackfillV33=true;
   }
   if(!state.deload) state.deload = {active:false, start:null, dismissed:null};
+  // v67: deload week of Oct 12 — on from Monday, ends itself at the start of Monday Oct 19.
+  if(!state.deloadOct12V67){
+    const mon=new Date(2026,9,12).getTime(), next=new Date(2026,9,19).getTime(), now=Date.now();
+    if(!state.deload.active && now>=mon && now<next)
+      state.deload={active:true, start:mon, dismissed:null, lastEnded:state.deload.lastEnded||null};
+    // sessions already logged this week were deload sessions too: keep them out of progression
+    if(now>=mon && now<next)
+      for(const h of (state.history||[])) if(h.date && h.date>="2026-10-12" && h.date<"2026-10-19") h.deload=true;
+    state.deloadOct12V67=true;
+  }
   // auto-expire: a deload week ends itself after 7 days
   if(state.deload.active && state.deload.start && (Date.now()-state.deload.start) > 7*24*3600*1000){
     state.deload.active=false; state.deload.lastEnded=state.deload.start+7*24*3600*1000; state.deload.start=null;
@@ -1979,7 +1999,8 @@ function fmtW(n){ return (Math.round(n*10)/10).toString().replace(/\.0$/,""); }
 // ever bar + plates, so anything the app computes snaps to bar + a multiple of 5 (2.5 a side).
 // The plate calculator uses the same table to pick its preset automatically.
 const BAR_WEIGHTS={"Leg Press":118,"Incline Smith Press":20,"Zercher Squat":45,"SLDL":45,
-                   "Reverse Grip Pulldown":7,"Seated Calf Raise":60};
+                   "Reverse Grip Pulldown":7,"Seated Calf Raise":60,
+                   "Hip Thrust":0,"Machine Row":0};
 function roundLoadableFor(name,n){
   const bar=BAR_WEIGHTS[name];
   if(bar===undefined || units()==="kg") return roundLoadable(n);
@@ -3552,7 +3573,7 @@ const COACH_TREND_PICKS={
   tuesday:  ["Incline Smith Press","Machine Shoulder Press","Dips (chest-focused)"],
   wednesday:["Lat Pulldown","Machine Row","Reverse Grip Pulldown"],
   thursday: ["SLDL","Leg Press","Bulgarian Split Squat"],
-  friday:   ["Incline DB Press","Converging Chest Press","Vulken Single-Arm Row"]
+  friday:   ["Incline DB Press","Converging Chest Press","Vulken Seated Row"]
 };
 let _coachLift=null, _coachTrendDay=null;
 function nextLiftingDow(){
@@ -4160,7 +4181,7 @@ document.getElementById("historyList").addEventListener("keydown",(e)=>{
 let _psBar=45;
 // Iso-lateral machines are logged per ARM: the number is one arm's load, so all of it goes on
 // that one arm instead of being split across two sides.
-const PER_ARM=new Set(["Reverse Grip Pulldown"]);
+const PER_ARM=new Set(["Reverse Grip Pulldown","Machine Row"]);
 let _psSides=2;
 function psSideWord(){ return _psSides===1 ? "on the arm" : "per side"; }
 function psCalc(){
