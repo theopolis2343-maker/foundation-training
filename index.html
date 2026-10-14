@@ -1228,7 +1228,7 @@ function defaultWorkouts(){
       ],
       ex:[
         mkEx("Incline Smith Press",3,"5","Bench LOW at ~15°. Your heavy press — the Smith bar starts at 20 lb, so log the total. Touch just below the collarbone, drive up and slightly back.","",180),
-        mkEx("Dips (chest-focused)",3,"8–10","Assist machine — progress by REDUCING assistance. Lean the torso forward, big stretch at the bottom.","",120),
+        mkEx("Dips (chest-focused)",3,"8–10","Bodyweight now, no assistance. Build to 3 clean sets of 10, then add 5 lb (belt or dumbbell between the feet) and log the ADDED weight — it keeps climbing 5 lb at a time. Lean the torso forward, big stretch at the bottom.","",120),
         mkEx("Machine Shoulder Press",3,"8–10","Your only vertical press — this is the gap that was holding your delts back. Press without shrugging, control the way down.","",120),
         mkEx("Pec Deck Fly",3,"8–10","Both arms together. Elbows slightly bent, big stretch at the back, squeeze the handles together across the chest and pause.","",75),
         mkEx("JM Press",2,"8–10","Two sets CLOSE to failure — 1–2 reps in reserve, not grinding. Elbows tucked, bar toward the chin, strict.","B",75),
@@ -1544,6 +1544,15 @@ function v30fix(){
   // dots carry across; renamed in place so a session open today is kept.
   // v68: the adductor and abductor machines were logged the wrong way round. Swap every
   // record between them (sets, dots, PRs, overrides) so each lift owns its real history.
+  // v69: dips are bodyweight now (no assistance). New cue in place; progression restarts at
+  // BW × 5 via PROG_RESET / START_WEIGHTS.
+  if(!state.dipsBwV69){
+    for(const d of Object.keys(state.workouts||{})){
+      const w=state.workouts[d]; if(!w||!w.ex) continue;
+      for(const ex of w.ex) if(ex.name==="Dips (chest-focused)") ex.cue="Bodyweight now, no assistance. Build to 3 clean sets of 10, then add 5 lb (belt or dumbbell between the feet) and log the ADDED weight — it keeps climbing 5 lb at a time. Lean the torso forward, big stretch at the bottom.";
+    }
+    state.dipsBwV69 = true;
+  }
   if(!state.addAbdSwapV68){
     renameExercise("Adductor Machine","__swap_add_abd__");
     renameExercise("Abductor Machine","Adductor Machine");
@@ -1870,7 +1879,7 @@ function exTier(ex){
 // Dips and pull-ups run on an assist machine: the number logged is how much help the
 // machine gives, so LESS weight is a stronger set. Progression has to run backwards
 // for these or the engine would "reward" a good session by adding assistance.
-function isAssisted(name){ return /^(dips|pull-?up)/i.test(name||""); }
+function isAssisted(name){ return /^pull-?up/i.test(name||""); }
 function tierStep(ex,w){
   const ov=state.progOverride && state.progOverride[ex.name];
   if(ov && ov.step) return ov.step;
@@ -1891,6 +1900,7 @@ function progHistory(name,limit){
   for(const h of state.history){
     if(!h.exercises) continue;
     if(h.deload) continue;               // deload sessions never steer progression
+    if(PROG_RESET[name] && h.date && h.date < PROG_RESET[name]) continue;   // before a restart
     const m=h.exercises.find(e=>e.name===name);
     if(m && m.sets && m.sets.length){
       const reps=m.sets.map(s=>parseFloat(s.r)||0);
@@ -1906,14 +1916,33 @@ function progHistory(name,limit){
 // returns {state:'climb'|'earned'|'hold'|'deload'|'start', w, reps, line} or null
 // Starting loads for lifts that were deliberately reset — used only until the first session
 // under that name is logged, then the normal dot-driven ladder takes over.
-const START_WEIGHTS={"Reverse Grip Pulldown":52};
+const START_WEIGHTS={"Reverse Grip Pulldown":52, "Dips (chest-focused)":{w:0,reps:5}};
+// Lifts restarted from a new baseline: sessions before this date no longer steer progression
+// (they stay in the journal). Dips: assistance used to live in the notes, now bodyweight × 5.
+const PROG_RESET={"Dips (chest-focused)":"2026-10-14"};
+// Bodyweight lifts that only take on load once EVERY set reaches the top of the range cleanly
+// (no red): until then green and yellow both add a rep.
+const LOAD_AT_TOP=new Set(["Dips (chest-focused)"]);
+// Weighted dips log the ADDED load, so show it as "BW +10" rather than a bare "10".
 function suggestFor(ex){
+  const s=_suggestFor(ex);
+  if(s && LOAD_AT_TOP.has(ex.name) && s.w>0 && !s.bw){
+    s.line=s.line.replace(/^(\d+(?:\.\d+)?) ×/, "BW +$1 ×");
+    if(s.ease && s.ease.w>0) s.ease.line=s.ease.line.replace(/^(\d+(?:\.\d+)?) ×/, "BW +$1 ×");
+  }
+  return s;
+}
+function _suggestFor(ex){
   if(!isProgressable(ex)) return null;
   const rng=parseRange(ex.reps);
   const hist=progHistory(ex.name,5);
   if(!hist.length){                                       // no data yet — starting weight, if one is set
-    const sw=START_WEIGHTS[ex.name];
-    if(sw && rng) return {state:"climb", w:sw, reps:rng.lo, line:`${fmtW(sw)} × ${rng.lo}`};
+    const st=START_WEIGHTS[ex.name];
+    if(st!==undefined && rng){
+      const sw = typeof st==="object" ? st.w : st, sr = typeof st==="object" ? st.reps : rng.lo;
+      if(sw>0) return {state:"climb", w:sw, reps:sr, line:`${fmtW(sw)} × ${sr}`};
+      return {state:"climb", w:0, bw:true, reps:sr, line:`BW × ${sr}`};
+    }
     return null;
   }
   const last=hist[0];
@@ -1956,6 +1985,15 @@ function suggestFor(ex){
 
   // ---- BODYWEIGHT (logged at 0) ----
   if(w<=0){
+    if(LOAD_AT_TOP.has(ex.name) && dot!=="hold"){
+      const clean = last.reps.length>=3 && last.reps.every(r=>r>=rng.hi);
+      if(clean){
+        const add=roundLoadable(ease);
+        return {state:"earned", w:add, bw:true, reps:rng.lo, line:`BW +${fmtW(add)} × ${rng.lo}`};
+      }
+      const nr=Math.min(rng.hi, Math.floor(lowest)+1);   // green or yellow: one more rep, up to the top
+      return {state:"climb", w:0, bw:true, reps:nr, line:`BW × ${nr}`};
+    }
     if(dot==="go" && !assisted){
       const add=roundLoadable(ease);
       return {state:"earned", w:add, bw:true, reps:rng.lo, line:`BW +${fmtW(add)} × ${rng.lo}`};
